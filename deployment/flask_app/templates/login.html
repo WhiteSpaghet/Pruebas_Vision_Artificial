@@ -2,166 +2,115 @@
 {% block title %}Iniciar sesión - VISION_ARTIFICIAL{% endblock %}
 
 {% block content %}
-<div style="max-width:480px; margin: 28px auto;">
-  <div class="card" style="padding:20px;">
+<div style="max-width:520px; margin: 10px auto;">
+  <div class="card" style="padding:18px;">
     <h2>Iniciar sesión</h2>
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash flash-{{ category }}" style="margin-bottom:12px;">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    <!-- Form tradicional que hace POST al backend (fallback) -->
-    <form id="login-form" action="{{ url_for('login') }}" method="post" novalidate>
-      <label for="email">Correo electrónico</label><br>
-      <input id="email" name="email" type="email" required style="margin-top:8px;"><br><br>
+    <form id="login-form" autocomplete="on">
+      <label for="email">Email</label><br>
+      <input id="email" name="email" type="email" required style="width:100%; padding:8px; margin-top:6px;"><br><br>
 
       <label for="password">Contraseña</label><br>
-      <input id="password" name="password" type="password" required style="margin-top:8px;"><br><br>
+      <input id="password" name="password" type="password" required style="width:100%; padding:8px; margin-top:6px;"><br><br>
 
-      <label style="display:flex; gap:8px; align-items:center;">
-        <input type="checkbox" name="remember" id="remember">
-        <span class="small-muted">Recordarme</span>
-      </label>
-
-      <!-- Campo oculto para enviar idToken si se autentica con Firebase en cliente -->
-      <input type="hidden" id="idTokenField" name="idToken" value="">
-
-      <div style="display:flex; gap:10px; margin-top:12px;">
+      <div style="display:flex; gap:8px;">
         <button type="submit" class="btn">Entrar</button>
-        <a href="{{ url_for('register') }}" class="btn" style="background:#888; text-decoration:none; padding:10px 14px; display:inline-block;">Registrarse</a>
+        <button id="btn-register" type="button" class="btn" style="background:#888">Crear cuenta</button>
       </div>
     </form>
 
-    <hr style="margin:18px 0; opacity:0.6;">
+    <div id="login-msg" style="margin-top:12px;"></div>
 
-    <div>
-      <p class="small-muted">O inicia sesión con</p>
-      <div style="display:flex; gap:10px; margin-top:8px;">
-        <button id="btn-google" class="btn" style="background:#db4437;">Google</button>
-        <button id="btn-facebook" class="btn" style="background:#4267B2;">Facebook</button>
-      </div>
+    <div style="margin-top:12px;">
+      ¿Olvidaste tu contraseña? <a href="{{ url_for('reset_password') if 'reset_password' in (app.view_functions|list) else url_for('register') }}">Recuperarla</a>.
     </div>
-
-    <p class="small-muted" style="margin-top:14px;">
-      ¿Olvidaste tu contraseña? <a href="{{ url_for('reset_password') }}">Recuperarla</a>.
-    </p>
   </div>
 </div>
 
 <script>
-  // Manejo de autenticación: si Firebase client está presente, intentamos usarlo para login
-  document.addEventListener('DOMContentLoaded', () => {
-    const loginForm = document.getElementById('login-form');
-    const idTokenField = document.getElementById('idTokenField');
+(async function initFirebaseLogin(){
+  // 1) cargar la config (archivo que colocaste en static/firebase_config.json)
+  try {
+    const cfgRes = await fetch("{{ url_for('static', filename='firebase_config.json') }}");
+    if (!cfgRes.ok) {
+      console.warn("No se encontró firebase_config.json en static. Sigue con login local.");
+      return;
+    }
+    const cfg = await cfgRes.json();
 
-    // Helper: post token to backend login endpoint to create server session (if implemented)
-    async function sendIdTokenToBackend(idToken) {
+    // 2) cargar compat SDKs (más simple para snippets)
+    const base = "https://www.gstatic.com/firebasejs/9.22.2";
+    await Promise.all([
+      new Promise(r=>{ const s=document.createElement('script'); s.src = base + "/firebase-app-compat.js"; s.onload=r; document.head.appendChild(s); }),
+      new Promise(r=>{ const s=document.createElement('script'); s.src = base + "/firebase-auth-compat.js"; s.onload=r; document.head.appendChild(s); })
+    ]);
+
+    // 3) inicializar firebase client
+    if (!window.firebase) {
+      console.error("Firebase SDK no disponible.");
+      return;
+    }
+    window.firebase.initializeApp(cfg);
+    const auth = window.firebase.auth();
+
+    // Helper: enviar idToken al backend y crear session
+    async function sendIdTokenToServer(idToken) {
+      const res = await fetch("{{ url_for('api_login_firebase') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken })
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || "error en /api/login_firebase");
+      }
+      return res.json();
+    }
+
+    // Form handlers
+    const loginForm = document.getElementById('login-form');
+    const msg = document.getElementById('login-msg');
+    const registerBtn = document.getElementById('btn-register');
+
+    loginForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      msg.innerText = "Procesando...";
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
       try {
-        const resp = await fetch("{{ url_for('login') }}", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken })
-        });
-        if (resp.ok) {
-          // redirect to dashboard or home
-          window.location.href = "{{ url_for('dashboard') }}";
-        } else {
-          const txt = await resp.text();
-          Notifications.error("Error en backend: " + txt);
-        }
+        const cred = await auth.signInWithEmailAndPassword(email, password);
+        const idToken = await cred.user.getIdToken(true);
+        await sendIdTokenToServer(idToken);
+        // redirigir al dashboard
+        window.location.href = "{{ url_for('dashboard') }}";
       } catch (err) {
         console.error(err);
-        Notifications.error("No se pudo notificar al servidor.");
+        msg.innerHTML = `<div class="flash flash-error">${err.message || err}</div>`;
       }
-    }
-
-    // If firebase global auth available (legacy compat), use it for social sign-in
-    const hasLegacyFirebase = (window.firebase && window.firebase.auth);
-    if (hasLegacyFirebase) {
-      // Google provider
-      document.getElementById('btn-google').addEventListener('click', async () => {
-        try {
-          const provider = new window.firebase.auth.GoogleAuthProvider();
-          const result = await window.firebase.auth().signInWithPopup(provider);
-          const user = result.user;
-          const idToken = await user.getIdToken();
-          // send idToken to backend to create session (optional)
-          await sendIdTokenToBackend(idToken);
-        } catch (err) {
-          console.error(err);
-          Notifications.error("Login con Google falló");
-        }
-      });
-
-      // Facebook provider
-      document.getElementById('btn-facebook').addEventListener('click', async () => {
-        try {
-          const provider = new window.firebase.auth.FacebookAuthProvider();
-          const result = await window.firebase.auth().signInWithPopup(provider);
-          const user = result.user;
-          const idToken = await user.getIdToken();
-          await sendIdTokenToBackend(idToken);
-        } catch (err) {
-          console.error(err);
-          Notifications.error("Login con Facebook falló");
-        }
-      });
-    } else {
-      // If no firebase, hide social buttons or keep them but show toast
-      document.getElementById('btn-google').addEventListener('click', () => {
-        Notifications.warning("Login social no configurado en cliente.");
-      });
-      document.getElementById('btn-facebook').addEventListener('click', () => {
-        Notifications.warning("Login social no configurado en cliente.");
-      });
-    }
-
-    // Intercept form submit: try client-side Firebase email/password (if available),
-    // else fallback to normal POST (server-side authentication).
-    loginForm.addEventListener('submit', async (ev) => {
-      // Prevent default to try Firebase auth first
-      ev.preventDefault();
-      const email = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value;
-      if (!email || !password) {
-        Notifications.error("Completa email y contraseña.");
-        return;
-      }
-
-      if (hasLegacyFirebase) {
-        try {
-          const userCredential = await window.firebase.auth().signInWithEmailAndPassword(email, password);
-          const idToken = await userCredential.user.getIdToken();
-          // Option A: send token to backend endpoint to create server session
-          await sendIdTokenToBackend(idToken);
-          return;
-        } catch (err) {
-          console.warn("Firebase signin failed:", err);
-          // fallback: try standard form POST (server-side auth)
-        }
-      }
-
-      // Fallback: submit the original form to the backend (traditional authentication)
-      // If backend expects idToken (e.g. from other flows), it's included in hidden input.
-      loginForm.submit();
     });
 
-    // Optional: if user is already logged in via Firebase client, redirect / sync with backend
-    if (hasLegacyFirebase) {
-      window.firebase.auth().onAuthStateChanged(async (user) => {
-        if (user) {
-          try {
-            const token = await user.getIdToken();
-            // send to backend to sync session
-            await sendIdTokenToBackend(token);
-          } catch (err) { /* ignore */ }
-        }
-      });
-    }
-  });
+    // Registro rápido (email/password)
+    registerBtn.addEventListener('click', async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      if (!email || !password) { alert("Rellena email y contraseña para crear cuenta"); return; }
+      msg.innerText = "Creando cuenta...";
+      try {
+        const cred = await auth.createUserWithEmailAndPassword(email, password);
+        // opcional: añadir displayName
+        await cred.user.updateProfile({ displayName: email.split('@')[0] });
+        const idToken = await cred.user.getIdToken(true);
+        await sendIdTokenToServer(idToken);
+        window.location.href = "{{ url_for('dashboard') }}";
+      } catch (err) {
+        console.error(err);
+        msg.innerHTML = `<div class="flash flash-error">${err.message || err}</div>`;
+      }
+    });
+
+  } catch (e) {
+    console.warn("Init firebase failed", e);
+  }
+})();
 </script>
 {% endblock %}

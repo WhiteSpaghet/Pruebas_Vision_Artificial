@@ -1,193 +1,217 @@
 """
 deployment/flask_app/app.py
-VISION_ARTIFICIAL - Flask backend (predicción, API, Firebase optional)
+VISION_ARTIFICIAL - Flask backend (predicción + API + Firebase optional)
 
-Notas:
- - Maneja Firebase admin de forma robusta (si el json no es válido se desactiva).
- - Carga modelo Keras de forma tolerante: si no está presente la app sigue corriendo.
- - Endpoints útiles: /api/predict (anónimo posible), /api/history, /api/whoami, /api/metrics
- - Ruta /reset_password añadida (placeholder).
+Pega este archivo en deployment/flask_app/app.py
+Requisitos:
+  - tensorflow (si vas a predecir localmente)
+  - pillow, numpy
+  - firebase-admin (opcional, si quieres usar Firestore / token verify)
 """
 
 import os
 import io
 import json
+import base64
 import pathlib
 from datetime import datetime
 from functools import wraps
+from typing import Optional, Dict, Any
 
 from flask import (
-    Flask, render_template, request, jsonify, redirect, url_for, flash, session
+    Flask, render_template, request, jsonify, session, redirect, url_for, flash
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# optional ML libs (fall back gracefully if TF missing)
-TF_AVAILABLE = True
+# ML libs
 try:
     import numpy as np
     from PIL import Image
     import tensorflow as tf
-except Exception as e:
-    TF_AVAILABLE = False
-    # keep running the app even if TF is not available
-    print("[warning] TensorFlow (or other ML deps) not available:", e)
+except Exception:
+    # If TF not installed, app will still run pages but /api/predict will return error.
+    np = None
+    Image = None
+    tf = None
 
-# Optional Firebase admin (robust import)
+# Optional firebase_admin
 FIREBASE_ENABLED = True
-FIREBASE_CRED_PATH = "firebase_config.json"  # server side service account (NOT the client web config)
-firebase_app = None
+firebase_admin = None
 firebase_auth = None
 firebase_db = None
-firebase_storage_bucket = None
+firebase_storage = None
 
 try:
     import firebase_admin
     from firebase_admin import credentials, auth, firestore, storage
+    firebase_admin  # silence linter
 except Exception:
     FIREBASE_ENABLED = False
-    print("[firebase] firebase_admin not installed or import failed; running in local mode")
 
-# Project paths
+# ---------------------------
+# Paths & basic setup
+# ---------------------------
+HERE = pathlib.Path(__file__).resolve().parent
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 MODEL_PATH = PROJECT_ROOT / "models" / "cnn_best.keras"
-UPLOADS_DIR = pathlib.Path(__file__).resolve().parent / "static" / "uploads"
+UPLOADS_DIR = HERE / "static" / "uploads"
 EXPERIMENTS_DIR = PROJECT_ROOT / "experiments"
 REPORTS_DIR = PROJECT_ROOT / "reports" / "figures"
 
-# ensure folders exist
 for d in (UPLOADS_DIR, EXPERIMENTS_DIR, REPORTS_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
 # Flask app
 app = Flask(__name__, static_folder="static", template_folder="templates")
-app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret-change-me")
+app.secret_key = os.environ.get("FLASK_SECRET", "replace-this-with-a-secure-key")
 
-# -----------------------
-# Firebase initialization (robust)
-# -----------------------
-if FIREBASE_ENABLED:
+# Make current year available in templates (fixes now() issues)
+app.jinja_env.globals['current_year'] = datetime.utcnow().year
+
+# ---------------------------
+# Firebase initialization helpers
+# ---------------------------
+def init_firebase_from_env() -> bool:
+    """
+    Intenta inicializar firebase-admin desde:
+      1) FIREBASE_CREDENTIALS_PATH -> ruta a JSON
+      2) FIREBASE_SERVICE_ACCOUNT_JSON -> JSON crudo en env
+      3) FIREBASE_SA_B64 -> base64 del JSON
+    Devuelve True si inicializa correctamente.
+    """
+    global FIREBASE_ENABLED, firebase_admin, firebase_auth, firebase_db, firebase_storage
+    if not FIREBASE_ENABLED:
+        return False
     try:
-        cred_path = pathlib.Path(__file__).resolve().parent / FIREBASE_CRED_PATH
-        if cred_path.exists():
-            # quick validation: JSON must include "type":"service_account"
-            raw = json.loads(cred_path.read_text(encoding="utf-8"))
-            if raw.get("type") != "service_account":
-                raise ValueError("Invalid service account JSON: 'type' != 'service_account'")
-            cred = credentials.Certificate(str(cred_path))
-            firebase_app = firebase_admin.initialize_app(cred)
+        # prefer path
+        sa_path = os.environ.get("FIREBASE_CREDENTIALS_PATH")
+        if sa_path:
+            p = pathlib.Path(sa_path)
+            if p.exists():
+                cred = credentials.Certificate(str(p))
+                firebase_admin.initialize_app(cred)
+                firebase_auth = auth
+                firebase_db = firestore.client()
+                try:
+                    firebase_storage = storage.bucket()
+                except Exception:
+                    firebase_storage = None
+                print("[firebase] initialized from file path")
+                return True
+
+        # raw json
+        sa_raw = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+        if sa_raw:
+            cred = credentials.Certificate(json.loads(sa_raw))
+            firebase_admin.initialize_app(cred)
             firebase_auth = auth
             firebase_db = firestore.client()
             try:
-                firebase_storage_bucket = storage.bucket()
+                firebase_storage = storage.bucket()
             except Exception:
-                firebase_storage_bucket = None
-            print("[firebase] initialized")
-        else:
-            FIREBASE_ENABLED = False
-            print("[firebase] firebase_config.json not found; running without Firebase admin")
-    except Exception as e:
+                firebase_storage = None
+            print("[firebase] initialized from FIREBASE_SERVICE_ACCOUNT_JSON")
+            return True
+
+        # base64 encoded
+        sa_b64 = os.environ.get("FIREBASE_SA_B64")
+        if sa_b64:
+            decoded = base64.b64decode(sa_b64).decode("utf-8")
+            cred = credentials.Certificate(json.loads(decoded))
+            firebase_admin.initialize_app(cred)
+            firebase_auth = auth
+            firebase_db = firestore.client()
+            try:
+                firebase_storage = storage.bucket()
+            except Exception:
+                firebase_storage = None
+            print("[firebase] initialized from FIREBASE_SA_B64")
+            return True
+
+        # attempt to find firebase_config file in static (service account not the same as client config)
+        print("[firebase] no server credentials provided via env; firebase-admin disabled (client SDK still OK on frontend)")
         FIREBASE_ENABLED = False
+        return False
+    except Exception as e:
         print("[firebase] init failed:", e)
+        FIREBASE_ENABLED = False
+        return False
 
-# -----------------------
-# Context processor: inject current year for footer
-# -----------------------
-@app.context_processor
-def inject_current_year():
-    return {"current_year": datetime.utcnow().year}
+# run firebase init attempt
+init_firebase_from_env()
 
-# -----------------------
-# Model loading (tolerant)
-# -----------------------
+# ---------------------------
+# Model loading
+# ---------------------------
 MODEL = None
-if TF_AVAILABLE:
-    def try_load_model(path):
-        try:
-            print(f"[model] trying to load: {path}")
-            m = tf.keras.models.load_model(str(path))
-            print("[model] loaded from", path)
-            return m
-        except Exception as e:
-            print(f"[model] cannot load {path}: {e}")
-            return None
-
-    # try common candidate paths
-    candidates = [
-        MODEL_PATH,
-        PROJECT_ROOT / "models" / "cnn_best.h5",
-        PROJECT_ROOT / "models" / "cnn_v1.keras",
-        PROJECT_ROOT / "models" / "cnn_v1.h5"
-    ]
-    for p in candidates:
-        if p and p.exists():
-            MODEL = try_load_model(p)
-            if MODEL is not None:
-                break
-
-    if MODEL is None:
-        print("⚠️ No Keras model loaded. /api/predict seguirá funcionando pero devolverá error 500 si se intenta predecir.")
-else:
-    print("⚠️ TensorFlow no está disponible; API de predicción deshabilitada.")
-
-# CIFAR-10 labels
 CLASS_NAMES = ['airplane', 'automobile', 'bird', 'cat', 'deer',
                'dog', 'frog', 'horse', 'ship', 'truck']
 
-# -----------------------
-# Helpers
-# -----------------------
-def is_api_request(req):
-    """Detectar llamada AJAX/API para devolver 401 JSON en vez de redirect."""
-    if req.path.startswith("/api"):
-        return True
-    # XHR header or fetch
-    if req.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return True
-    # Accept header prefers json
-    if "application/json" in (req.headers.get("Accept", "")):
-        return True
-    return False
 
-def preprocess_image_bytes(image_bytes, target_size=(32, 32)):
-    """Bytes -> normalized numpy batch (1, h, w, c). Requires PIL + numpy."""
-    if not TF_AVAILABLE:
-        raise RuntimeError("TensorFlow / PIL / numpy not available.")
+def load_model_safe(path: pathlib.Path):
+    global MODEL
+    if tf is None:
+        print("[model] tensorflow not installed; skipping model load.")
+        MODEL = None
+        return
+    try:
+        print(f"[model] loading model from {path}")
+        MODEL = tf.keras.models.load_model(str(path))
+        print("[model] model loaded.")
+    except Exception as e:
+        print("[model] load error:", e)
+        MODEL = None
+
+
+if MODEL_PATH.exists():
+    load_model_safe(MODEL_PATH)
+else:
+    print("[model] model file not found at", MODEL_PATH)
+
+# ---------------------------
+# Utilities
+# ---------------------------
+def preprocess_image_bytes(image_bytes: bytes, target_size=(32, 32)):
+    """Bytes -> normalized numpy array [1,H,W,3]."""
+    if Image is None or np is None:
+        raise RuntimeError("Pillow / numpy required for preprocessing")
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     img = img.resize(target_size)
     arr = np.array(img).astype("float32") / 255.0
-    return np.expand_dims(arr, 0)
+    return np.expand_dims(arr, axis=0)
+
 
 def save_local_file(file_storage, filename=None):
-    """Guarda la imagen subida en static/uploads y devuelve la ruta relativa y path local."""
-    if filename is None:
-        filename = datetime.utcnow().strftime("%Y%m%d%H%M%S%f_") + file_storage.filename
-    safe_name = filename.replace(" ", "_")
-    dest = UPLOADS_DIR / safe_name
+    """Save uploaded FileStorage to static/uploads and return relative url and absolute path."""
+    fname = filename or (datetime.utcnow().strftime("%Y%m%d%H%M%S%f_") + file_storage.filename)
+    safe = fname.replace(" ", "_")
+    dest = UPLOADS_DIR / safe
     file_storage.save(str(dest))
-    return f"/static/uploads/{safe_name}", str(dest)
+    return f"/static/uploads/{safe}", str(dest)
 
-# -----------------------
-# Simple local user store (file-based) - useful si no usas Firebase Auth
-# -----------------------
+
+# ---------------------------
+# User store (local fallback)
+# ---------------------------
 USERS_LOCAL_FILE = EXPERIMENTS_DIR / "users_local.json"
 
-def load_local_users():
+
+def load_local_users() -> Dict[str, Any]:
     if USERS_LOCAL_FILE.exists():
         with open(USERS_LOCAL_FILE, "r", encoding="utf-8") as f:
-            try:
-                return json.load(f)
-            except Exception:
-                return {}
+            return json.load(f)
     return {}
 
-def save_local_users(users):
+
+def save_local_users(users: Dict[str, Any]) -> None:
     with open(USERS_LOCAL_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, indent=2)
 
-def create_local_user(email, name, password):
+
+def create_local_user(email: str, name: str, password: str):
     users = load_local_users()
     if email in users:
-        return False, "El usuario ya existe."
+        return False, "Usuario ya existe"
     users[email] = {
         "name": name,
         "password_hash": generate_password_hash(password),
@@ -196,36 +220,82 @@ def create_local_user(email, name, password):
     save_local_users(users)
     return True, None
 
-def authenticate_local_user(email, password):
+
+def authenticate_local_user(email: str, password: str):
     users = load_local_users()
-    user = users.get(email)
-    if not user:
+    u = users.get(email)
+    if not u:
         return False, None
-    if check_password_hash(user["password_hash"], password):
-        return True, user
+    if check_password_hash(u["password_hash"], password):
+        return True, u
     return False, None
 
-# -----------------------
-# Decorator login_required (mejor comportamiento para APIs)
-# -----------------------
+
+# ---------------------------
+# Auth helpers (session + token)
+# ---------------------------
+def get_token_from_request(req) -> Optional[str]:
+    auth_header = req.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+    # JSON body token
+    try:
+        if req.is_json:
+            j = req.get_json(silent=True) or {}
+            if "idToken" in j:
+                return j.get("idToken")
+    except Exception:
+        pass
+    return req.form.get("idToken") or req.args.get("idToken") or req.headers.get("X-ID-TOKEN")
+
+
+def verify_firebase_token(id_token: str) -> Optional[Dict[str, Any]]:
+    """Verifica idToken con firebase_admin.auth y devuelve dict decodificado o None."""
+    if not FIREBASE_ENABLED or firebase_auth is None:
+        return None
+    try:
+        decoded = firebase_auth.verify_id_token(id_token)
+        return decoded
+    except Exception as e:
+        app.logger.debug("verify_firebase_token failed: %s", e)
+        return None
+
+
+def get_current_user_from_request(req) -> Optional[Dict[str, Any]]:
+    # session first
+    if "user" in session:
+        return session.get("user")
+    # token
+    token = get_token_from_request(req)
+    if token:
+        decoded = verify_firebase_token(token)
+        if decoded:
+            return {
+                "uid": decoded.get("uid"),
+                "email": decoded.get("email"),
+                "name": decoded.get("name") or decoded.get("displayName")
+            }
+    return None
+
+
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if "user" not in session:
-            if is_api_request(request):
-                return jsonify({"error": "authentication required"}), 401
             flash("Inicia sesión para acceder a esta sección", "warning")
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return wrapper
 
-# -----------------------
-# Web routes
-# -----------------------
+
+# ---------------------------
+# Routes - pages
+# ---------------------------
 @app.route("/")
 def index():
     theme = session.get("theme", "theme_light_green.css")
     return render_template("index.html", theme=theme)
+
 
 @app.route("/dashboard")
 @login_required
@@ -234,6 +304,7 @@ def dashboard():
     history = session.get("history", [])
     return render_template("dashboard.html", theme=theme, history=history)
 
+
 @app.route("/profile")
 @login_required
 def profile():
@@ -241,15 +312,17 @@ def profile():
     user = session.get("user", {})
     return render_template("profile.html", theme=theme, user=user)
 
+
 @app.route("/change_theme", methods=["POST"])
 def change_theme():
     theme = request.form.get("theme", "theme_light_green.css")
     session["theme"] = theme
     return jsonify({"theme": theme})
 
-# -----------------------
-# Authentication routes (local fallback)
-# -----------------------
+
+# ---------------------------
+# Auth - local register / login / logout
+# ---------------------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
@@ -263,6 +336,7 @@ def login():
     session["user"] = {"email": email, "name": user["name"]}
     flash("Sesión iniciada correctamente", "success")
     return redirect(url_for("dashboard"))
+
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -283,37 +357,60 @@ def register():
     flash("Cuenta creada correctamente", "success")
     return redirect(url_for("dashboard"))
 
+
 @app.route("/logout")
 def logout():
     session.pop("user", None)
     flash("Sesión cerrada correctamente", "info")
     return redirect(url_for("index"))
 
-# -----------------------
-# Reset password (placeholder)
-# -----------------------
-@app.route("/reset_password", methods=["GET", "POST"])
-def reset_password():
-    if request.method == "POST":
-        email = request.form.get("email")
-        # aquí podrías conectar con Firebase Auth / tu sistema de envío de emails
-        # por ahora simulamos: guardamos un flash y redirigimos al login
-        flash("Si ese correo está registrado, recibirás instrucciones (simulado).", "info")
-        return redirect(url_for("login"))
-    return render_template("reset_password.html")
 
-# -----------------------
-# API: prediction (public allowed; saves history only si user está logueado)
-# -----------------------
+# ---------------------------
+# API: Firebase login (client -> server)
+# ---------------------------
+@app.route("/api/login_firebase", methods=["POST"])
+def api_login_firebase():
+    """
+    Recibe JSON { idToken } desde el cliente. Verifica token con Firebase Admin,
+    y crea session['user'] con uid/email/name para uso en rutas que usan sesiones Flask.
+    """
+    data = {}
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+    else:
+        data = request.form.to_dict() or {}
+    id_token = data.get("idToken")
+    if not id_token:
+        return jsonify({"error": "idToken required"}), 400
+    decoded = verify_firebase_token(id_token)
+    if decoded is None:
+        return jsonify({"error": "invalid token"}), 401
+    session["user"] = {
+        "uid": decoded.get("uid"),
+        "email": decoded.get("email"),
+        "name": decoded.get("name") or decoded.get("displayName")
+    }
+    return jsonify({"ok": True, "user": session["user"]}), 200
+
+
+# ---------------------------
+# API: predict and history
+# ---------------------------
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
-    if not TF_AVAILABLE or MODEL is None:
-        return jsonify({"error": "model not available"}), 500
+    """
+    Acepta multipart/form-data con campo 'files' (uno o varios).
+    Si el usuario está autenticado por sesión o token, se guarda en session history.
+    Retorna lista de predicciones.
+    """
+    if MODEL is None:
+        return jsonify({"error": "Model not loaded"}), 500
 
     files = request.files.getlist("files")
     if not files:
-        return jsonify({"error": "no files uploaded"}), 400
+        return jsonify({"error": "No files uploaded"}), 400
 
+    user = get_current_user_from_request(request)
     results = []
     for f in files:
         try:
@@ -323,80 +420,70 @@ def api_predict():
             label = CLASS_NAMES[idx] if idx < len(CLASS_NAMES) else str(idx)
             conf = float(np.max(preds[0]))
         except Exception as e:
-            return jsonify({"error": f"prediction failed: {e}"}), 500
+            # prediction error
+            app.logger.exception("prediction error")
+            return jsonify({"error": "prediction failed", "detail": str(e)}), 500
 
         rel_url, local_path = save_local_file(f)
+        out = {"prediction": label, "confidence": conf, "image_url": rel_url}
+        results.append(out)
 
-        results.append({
-            "prediction": label,
-            "confidence": conf,
-            "image_url": rel_url
-        })
-
-        # save to session history if logged in (simple local history)
-        session.setdefault("history", []).append({
+        # Save to local session history
+        entry = {
             "file": rel_url,
             "prediction": label,
             "confidence": round(conf * 100, 2),
             "timestamp": datetime.utcnow().isoformat()
-        })
+        }
+        session.setdefault("history", []).append(entry)
+
+        # Optionally, save to Firestore if configured and user is available
+        try:
+            if FIREBASE_ENABLED and firebase_db and user:
+                doc = {
+                    "user": user.get("email") or user.get("uid"),
+                    "prediction": label,
+                    "confidence": conf,
+                    "image_url": rel_url,
+                    "timestamp": datetime.utcnow()
+                }
+                firebase_db.collection("predictions").add(doc)
+        except Exception as e:
+            app.logger.debug("failed saving to firestore: %s", e)
 
     return jsonify(results), 200
 
-# -----------------------
-# API: whoami, metrics, history
-# -----------------------
-@app.route("/api/whoami")
-def api_whoami():
-    return jsonify({"user": session.get("user")})
-
-@app.route("/api/metrics")
-def api_metrics():
-    # Try to read a summary from experiments/history_cnn.json
-    try:
-        histf = EXPERIMENTS_DIR / "history_cnn.json"
-        if histf.exists():
-            with open(histf, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            # expected structure may vary; attempt to extract last epoch metrics
-            if isinstance(data, dict) and "history" in data:
-                last = data["history"][-1] if data["history"] else {}
-                return jsonify({"accuracy": last.get("accuracy"), "loss": last.get("loss")})
-            # fallback: try keys 'final'
-            if isinstance(data, dict) and "final" in data:
-                return jsonify(data["final"])
-    except Exception:
-        pass
-    return jsonify({"accuracy": None, "loss": None})
 
 @app.route("/api/history")
 def api_history():
+    """
+    Devuelve historial del usuario desde session (limit opcional).
+    Si Firestore está habilitado y quieres, se puede implementar lectura desde ahí.
+    """
     try:
-        limit = int(request.args.get("limit", 50))
+        limit = int(request.args.get("limit", 20))
     except Exception:
-        limit = 50
+        limit = 20
     history = session.get("history", [])
-    return jsonify(list(reversed(history[-limit:])))
+    # devolver los últimos `limit` (más recientes al final)
+    return jsonify(history[-limit:][::-1])
 
-# -----------------------
+
+# ---------------------------
 # Error handlers
-# -----------------------
+# ---------------------------
 @app.errorhandler(404)
 def not_found(e):
     return render_template("index.html"), 404
 
-# -----------------------
+
+# ---------------------------
 # Run
-# -----------------------
+# ---------------------------
 if __name__ == "__main__":
-    # reduce TF log spam if available
-    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
-    # If model exists but not loaded (rare), try load again
-    if TF_AVAILABLE and MODEL is None:
-        try:
-            if MODEL_PATH.exists():
-                MODEL = tf.keras.models.load_model(str(MODEL_PATH))
-                print("[model] loaded on startup retry")
-        except Exception as e:
-            print("[model] startup retry failed:", e)
+    # reduce TF logs
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+    # attempt to load model if not loaded and model file exists
+    if MODEL is None and MODEL_PATH.exists() and tf is not None:
+        load_model_safe(MODEL_PATH)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
