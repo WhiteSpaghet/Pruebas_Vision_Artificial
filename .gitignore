@@ -1,0 +1,4 @@
+# Firebase service account (no subir nunca)
+deployment/flask_app/firebase_service_account.json
+# si usas .env
+.env
