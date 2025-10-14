@@ -1,9 +1,9 @@
 {
-  "apiKey": "TU_API_KEY",
-  "authDomain": "tu-proyecto.firebaseapp.com",
-  "projectId": "tu-proyecto",
-  "storageBucket": "tu-proyecto.appspot.com",
-  "messagingSenderId": "1234567890",
-  "appId": "1:1234567890:web:abcdefghijk",
-  "measurementId": "G-XXXXXXXXXX"
+  "apiKey": "AIzaSyBG8rdUJz73VanT0araIDeDhnqgORtZ5Wk",
+  "authDomain": "vision-artificial-463a6.firebaseapp.com",
+  "projectId": "vision-artificial-463a6",
+  "storageBucket": "vision-artificial-463a6.firebasestorage.app",
+  "messagingSenderId": "777382514865",
+  "appId": "1:777382514865:web:f83b8d85736ac4bb51d290",
+  "measurementId": "G-LVKGK3DT91"
 }
