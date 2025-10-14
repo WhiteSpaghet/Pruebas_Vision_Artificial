@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}VISION_ARTIFICIAL{% endblock %}</title>
+
+  <!-- Tema CSS dinámico -->
+  <link id="theme-style" rel="stylesheet" href="{{ url_for('static', filename='css/' + (theme|default('theme_light_green.css'))) }}">
+
+  <style>
+    :root { --nav-height: 64px; }
+    body { margin:0; padding-top: var(--nav-height); font-family: Inter, "Segoe UI", Arial, sans-serif; }
+    .navbar {
+      height: var(--nav-height);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding: 0 18px;
+      position: fixed;
+      top:0; left:0; right:0;
+      z-index: 900;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+    }
+    .nav-left, .nav-right { display:flex; align-items:center; gap:10px; }
+    .brand { font-weight:700; letter-spacing:0.3px; text-decoration:none; color:inherit; }
+    .btn {
+      display:inline-block; padding:8px 12px; border-radius:6px; border:none; text-decoration:none;
+      background:var(--btn-bg,#2d6a4f); color:var(--btn-color,#fff);
+      cursor:pointer;
+    }
+    main.container { max-width: 1100px; margin: 20px auto; padding: 12px; }
+    .flash { padding:10px 12px; border-radius:6px; margin-bottom:10px; }
+    .flash-success { background:#e6ffed; border-left:4px solid #2d6a4f; color:#08321b; }
+    .flash-error { background:#ffe6e6; border-left:4px solid #b00020; color:#4a0000; }
+    .small-muted { font-size:0.9rem; color: rgba(0,0,0,0.6); }
+    #theme-select { padding:6px 8px; border-radius:6px; border:1px solid #ccc; background:transparent; }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <header class="navbar" role="banner">
+    <div class="nav-left">
+      <a class="brand" href="{{ url_for('index') }}">VISION_ARTIFICIAL</a>
+      <nav aria-label="principal">
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('profile') }}">Perfil</a>
+      </nav>
+    </div>
+
+    <div class="nav-right">
+      <!-- Selector de tema -->
+      <label for="theme-select" class="small-muted" style="margin-right:6px;">Tema</label>
+      <select id="theme-select" title="Seleccionar tema"></select>
+
+      <!-- Estado usuario -->
+      <div id="user-display" style="margin-left:12px;">
+        {% if session.get('user') %}
+          {{ session.get('user')['name'] }}
+        {% else %}
+          Invitado
+        {% endif %}
+      </div>
+
+      <!-- Use anchors instead of onclick (evita conflictos de comillas y es accesible) -->
+      {% if session.get('user') %}
+        <a id="logout-btn" class="btn" href="{{ url_for('logout') }}" style="margin-left:10px;">Cerrar sesión</a>
+      {% else %}
+        <a id="login-btn" class="btn" href="{{ url_for('login') }}" style="margin-left:10px;">Iniciar sesión</a>
+      {% endif %}
+    </div>
+  </header>
+
+  <!-- FLASH MESSAGES -->
+  <main class="container" role="main">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- FOOTER -->
+  <footer style="text-align:center; padding:18px 12px; margin-top:40px;">
+    <small class="small-muted">VISION_ARTIFICIAL • Proyecto educativo • {{ current_year }}</small>
+  </footer>
+
+  <!-- JS generales -->
+  <script defer src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+  <!-- Firebase client (opcional) -->
+  <script>
+  (async function initFirebaseIfPresent(){
+    try {
+      const res = await fetch("{{ url_for('static', filename='firebase_config.json') }}");
+      if (!res.ok) return;
+      const cfg = await res.json();
+      const firebaseBase = "https://www.gstatic.com/firebasejs/9.22.2";
+      const scripts = [
+        firebaseBase + "/firebase-app.js",
+        firebaseBase + "/firebase-auth.js",
+        firebaseBase + "/firebase-firestore.js",
+        firebaseBase + "/firebase-storage.js"
+      ];
+      for (const s of scripts) {
+        await new Promise((resolve,reject)=>{
+          const sc=document.createElement('script'); sc.src=s; sc.onload=resolve; sc.onerror=reject;
+          document.head.appendChild(sc);
+        });
+      }
+      if (window.firebase && window.firebase.initializeApp) {
+        window.firebaseApp = window.firebase.initializeApp(cfg);
+        window.firebaseAuth = window.firebase.auth();
+        window.firebaseFirestore = window.firebase.firestore();
+        console.info("Firebase client inicializado.");
+      }
+    } catch(e) { console.warn("Firebase no inicializado:", e); }
+  })();
+  </script>
+
+  {% block scripts %}{% endblock %}
+
+</body>
+</html>

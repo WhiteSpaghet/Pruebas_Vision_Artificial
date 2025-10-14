@@ -1,0 +1,7 @@
+{
+  "aa@gmail.com": {
+    "name": "aa",
+    "password_hash": "scrypt:32768:8:1$jp4GesL7ZWH1Mp4z$c00dd382a0cb9ed7c73f7945781f3eedd2fd95937395b76026703ca81e2aaa80c0eaf0062bf880fd15c124895fa5b4cbac792defd5f10834ce3795b3e315341c",
+    "created_at": "2025-10-14T15:21:12.653374Z"
+  }
+}

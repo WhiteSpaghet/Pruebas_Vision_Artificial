@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+{% block title %}Perfil - VISION_ARTIFICIAL{% endblock %}
+
+{% block content %}
+<div style="max-width:1100px; margin:22px auto; display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+
+  <!-- PANEL IZQUIERDO: Info de usuario y acciones -->
+  <section style="flex:1 1 360px; min-width:300px;">
+    <div class="card" style="padding:16px;">
+      <h2>Mi perfil</h2>
+
+      <div style="display:flex; gap:14px; align-items:center; margin-top:10px;">
+        <div style="width:84px; height:84px; border-radius:10px; overflow:hidden; background:#eee; display:flex; align-items:center; justify-content:center;" id="profile-avatar">
+          <!-- Si hay foto se cargará aquí -->
+          <span class="small-muted">Avatar</span>
+        </div>
+        <div>
+          <div style="font-size:1.1rem; font-weight:700;" id="profile-username">Invitado</div>
+          <div class="small-muted" id="profile-email">—</div>
+          <div style="margin-top:8px;">
+            <button id="btn-edit-profile" class="btn">Editar perfil</button>
+            <button id="btn-logout" class="btn" style="background:#888; margin-left:6px;">Cerrar sesión</button>
+          </div>
+        </div>
+      </div>
+
+      <hr style="margin:12px 0;">
+      <div>
+        <label for="theme-select-profile" class="small-muted">Tema preferido</label><br>
+        <select id="theme-select-profile" style="margin-top:8px; min-width:200px;"></select>
+        <p class="small-muted" style="margin-top:8px;">
+          El tema seleccionado se guarda en tu perfil (si estás autenticado) o en tu navegador (localStorage).
+        </p>
+      </div>
+
+      <div style="margin-top:12px;">
+        <button id="btn-download-csv" class="btn">Descargar historial (CSV)</button>
+        <button id="btn-delete-account" class="btn" style="background:#b00020; margin-left:8px;">Eliminar cuenta</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px; margin-top:12px;">
+      <h3>Acciones rápidas</h3>
+      <ul style="padding-left:18px; margin-top:8px;">
+        <li><a href="{{ url_for('dashboard') }}">Ir al Dashboard</a></li>
+        <li><a href="{{ url_for('index') }}">Probar imagen</a></li>
+        <li><a href="{{ url_for('register') }}">Actualizar datos de registro</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- PANEL DERECHO: Historial del usuario y actividades -->
+  <section style="flex:1 1 640px; min-width:320px;">
+    <div class="card" style="padding:16px;">
+      <h2>Historial de tus predicciones</h2>
+
+      <div style="display:flex; gap:12px; align-items:center; margin-bottom:8px;">
+        <label class="small-muted">Filtrar por clase</label>
+        <select id="profile-filter-class" style="min-width:160px;">
+          <option value="all">Todas</option>
+          <option value="0">Avión</option>
+          <option value="1">Coche</option>
+          <option value="2">Pájaro</option>
+          <option value="3">Gato</option>
+          <option value="4">Ciervo</option>
+          <option value="5">Perro</option>
+          <option value="6">Rana</option>
+          <option value="7">Caballo</option>
+          <option value="8">Barco</option>
+          <option value="9">Camión</option>
+        </select>
+
+        <label class="small-muted" style="margin-left:8px;">Confianza mínima</label>
+        <input id="profile-filter-confidence" type="range" min="0" max="100" step="1" value="0" style="width:160px;">
+        <span id="profile-filter-confidence-val" class="small-muted" style="margin-left:6px;">0%</span>
+
+        <div style="margin-left:auto;">
+          <button id="profile-refresh-history" class="btn">Actualizar</button>
+        </div>
+      </div>
+
+      <div style="overflow:auto; max-height:420px;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="width:16%;">Fecha</th>
+              <th style="width:18%;">Predicción</th>
+              <th style="width:14%;">Confianza</th>
+              <th style="width:20%;">Imagen</th>
+              <th style="width:20%;">Grad-CAM</th>
+            </tr>
+          </thead>
+          <tbody id="profile-history-table">
+            <tr><td colspan="5" class="small-muted">Cargando historial…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px; margin-top:12px;">
+      <h3>Actividad reciente</h3>
+      <div id="profile-activities" class="small-muted">
+        Cargando...
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Edit profile modal (simple) -->
+<div id="edit-profile-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+  <div style="width:520px; background:var(--card-bg, white); padding:16px; border-radius:10px; position:relative;">
+    <button id="edit-close" style="position:absolute; right:12px; top:10px; background:transparent; border:none; font-size:1.1rem; cursor:pointer;">✕</button>
+    <h3>Editar perfil</h3>
+    <form id="edit-profile-form">
+      <label for="edit-name">Nombre</label><br>
+      <input id="edit-name" name="name" type="text" style="width:100%; margin-top:6px;"><br><br>
+
+      <label for="edit-email">Email</label><br>
+      <input id="edit-email" name="email" type="email" style="width:100%; margin-top:6px;"><br><br>
+
+      <label for="edit-avatar">Avatar (URL)</label><br>
+      <input id="edit-avatar" name="avatar" type="text" style="width:100%; margin-top:6px;"><br><br>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button type="submit" class="btn">Guardar</button>
+        <button type="button" id="edit-cancel" class="btn" style="background:#888;">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const userNameEl = document.getElementById('profile-username');
+  const userEmailEl = document.getElementById('profile-email');
+  const avatarEl = document.getElementById('profile-avatar');
+
+  const historyTbody = document.getElementById('profile-history-table');
+  const activitiesDiv = document.getElementById('profile-activities');
+  const filterClass = document.getElementById('profile-filter-class');
+  const filterConf = document.getElementById('profile-filter-confidence');
+  const filterConfVal = document.getElementById('profile-filter-confidence-val');
+  const refreshBtn = document.getElementById('profile-refresh-history');
+
+  const editModal = document.getElementById('edit-profile-modal');
+  const editBtn = document.getElementById('btn-edit-profile');
+  const editClose = document.getElementById('edit-close');
+  const editCancel = document.getElementById('edit-cancel');
+  const editForm = document.getElementById('edit-profile-form');
+
+  const logoutBtn = document.getElementById('btn-logout');
+  const deleteAccountBtn = document.getElementById('btn-delete-account');
+  const downloadCsvBtn = document.getElementById('btn-download-csv');
+
+  // Theme selector for profile (shares same theme selector logic)
+  const profileThemeSel = document.getElementById('theme-select-profile');
+  if (profileThemeSel) {
+    // populate options (mirror dashboard.js defaults)
+    const themes = [
+      {value: 'theme_light_green.css', label: 'Verde claro'},
+      {value: 'theme_light_dark.css', label: 'Blanco & Negro'},
+      {value: 'theme_dark_gray.css', label: 'Oscuro gris'}
+    ];
+    themes.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.value; o.text = t.label;
+      profileThemeSel.appendChild(o);
+    });
+
+    // Load preference
+    const localTheme = localStorage.getItem('vision_theme');
+    profileThemeSel.value = localTheme || '{{ theme|default("theme_light_green.css") }}';
+    profileThemeSel.addEventListener('change', (e) => {
+      const chosen = e.target.value;
+      // apply immediate
+      const link = document.getElementById('theme-style');
+      if (link) link.href = `/static/css/${chosen}`;
+      localStorage.setItem('vision_theme', chosen);
+      // attempt to save to Firestore via REST call (backend) - optional
+      fetch('/api/whoami').then(r => r.json()).then(async u => {
+        if (u && u.uid) {
+          try {
+            await fetch('/api/save_user_pref', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ theme: chosen })});
+          } catch(e){}
+        }
+      }).catch(()=>{});
+      Notifications.success('Tema guardado', { ttl: 1400 });
+    });
+  }
+
+  // update confidence label
+  filterConfVal.innerText = filterConf.value + '%';
+  filterConf.addEventListener('input', () => filterConfVal.innerText = filterConf.value + '%');
+
+  // Load current user (via /api/whoami)
+  async function loadUserInfo() {
+    try {
+      const res = await fetch('/api/whoami');
+      if (!res.ok) throw new Error('no whoami');
+      const u = await res.json();
+      if (u && !u.anonymous) {
+        userNameEl.innerText = u.name || u.email || u.uid;
+        userEmailEl.innerText = u.email || '';
+        // if picture present
+        if (u.picture) {
+          avatarEl.innerHTML = `<img src="${u.picture}" style="width:84px;height:84px;object-fit:cover;">`;
+        }
+      } else {
+        userNameEl.innerText = 'Invitado';
+        userEmailEl.innerText = '';
+      }
+    } catch (err) {
+      console.warn('whoami failed', err);
+    }
+  }
+
+  // Fetch user's history and render
+  async function fetchProfileHistory() {
+    historyTbody.innerHTML = '<tr><td colspan="5" class="small-muted">Cargando...</td></tr>';
+    try {
+      // backend /api/history returns user-specific entries if session/token present
+      const res = await fetch('/api/history?limit=200');
+      if (!res.ok) throw new Error('history fetch failed');
+      const arr = await res.json();
+      renderProfileHistory(arr);
+    } catch (err) {
+      historyTbody.innerHTML = '<tr><td colspan="5" class="small-muted">No se pudo cargar historial.</td></tr>';
+      console.error(err);
+    }
+  }
+
+  function renderProfileHistory(items) {
+    const classFilter = filterClass.value;
+    const minConf = parseFloat(filterConf.value)/100.0;
+    historyTbody.innerHTML = '';
+    if (!items || items.length === 0) {
+      historyTbody.innerHTML = '<tr><td colspan="5" class="small-muted">Sin predicciones aún.</td></tr>';
+      return;
+    }
+    items.forEach(it => {
+      if (classFilter !== 'all' && it.prediction_index != undefined && (''+it.prediction_index) !== (''+classFilter)) return;
+      if (it.confidence != undefined && it.confidence < minConf) return;
+
+      const tr = document.createElement('tr');
+
+      const tdTime = document.createElement('td');
+      tdTime.innerText = it.timestamp ? (new Date(it.timestamp).toLocaleString()) : '-';
+      tr.appendChild(tdTime);
+
+      const tdPred = document.createElement('td');
+      tdPred.innerText = it.prediction || '-';
+      tr.appendChild(tdPred);
+
+      const tdConf = document.createElement('td');
+      tdConf.innerText = it.confidence != undefined ? ((it.confidence*100).toFixed(2) + '%') : '-';
+      tr.appendChild(tdConf);
+
+      const tdImg = document.createElement('td');
+      if (it.image_url) {
+        const img = document.createElement('img');
+        img.src = it.image_url;
+        img.style.width = '86px';
+        img.style.height = '64px';
+        img.style.objectFit = 'cover';
+        img.style.borderRadius = '6px';
+        tdImg.appendChild(img);
+      } else tdImg.innerText = '-';
+      tr.appendChild(tdImg);
+
+      const tdGrad = document.createElement('td');
+      if (it.gradcam_b64) {
+        const gimg = document.createElement('img');
+        gimg.src = 'data:image/png;base64,' + it.gradcam_b64;
+        gimg.style.width = '86px';
+        gimg.style.height = '64px';
+        gimg.style.objectFit = 'cover';
+        gimg.style.borderRadius = '6px';
+        tdGrad.appendChild(gimg);
+      } else tdGrad.innerText = '-';
+      tr.appendChild(tdGrad);
+
+      historyTbody.appendChild(tr);
+    });
+  }
+
+  // Activities (simple recent actions)
+  async function loadActivities() {
+    try {
+      const res = await fetch('/api/history?limit=10');
+      if (!res.ok) throw new Error('no activities');
+      const arr = await res.json();
+      const html = arr.slice(0,8).map(it => {
+        const when = it.timestamp ? (new Date(it.timestamp).toLocaleString()) : '-';
+        return `<div style="margin-bottom:8px;">${when} — <strong>${it.prediction||'-'}</strong> (${((it.confidence||0)*100).toFixed(1)}%)</div>`;
+      }).join('');
+      activitiesDiv.innerHTML = html || '<div class="small-muted">Sin actividad reciente.</div>';
+    } catch (err) {
+      activitiesDiv.innerHTML = '<div class="small-muted">No se pudo cargar actividad.</div>';
+    }
+  }
+
+  // Edit profile modal handlers
+  editBtn.addEventListener('click', () => {
+    editModal.style.display = 'flex';
+    // prefill if we have data
+    document.getElementById('edit-name').value = userNameEl.innerText || '';
+    document.getElementById('edit-email').value = userEmailEl.innerText || '';
+  });
+  editClose.addEventListener('click', ()=> editModal.style.display = 'none');
+  editCancel.addEventListener('click', ()=> editModal.style.display = 'none');
+
+  editForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const name = document.getElementById('edit-name').value.trim();
+    const email = document.getElementById('edit-email').value.trim();
+    const avatar = document.getElementById('edit-avatar').value.trim();
+
+    try {
+      // send to backend to update user profile (you should implement /api/update_profile)
+      const res = await fetch('/api/update_profile', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name, email, avatar })
+      });
+      if (!res.ok) throw new Error('update failed');
+      Notifications.success('Perfil actualizado', { ttl: 1400 });
+      editModal.style.display = 'none';
+      await loadUserInfo();
+    } catch (err) {
+      console.error(err);
+      Notifications.error('No se pudo actualizar perfil');
+    }
+  });
+
+  // Logout
+  logoutBtn.addEventListener('click', async () => {
+    try {
+      // If firebase client present, sign out client side and notify backend
+      if (window.firebase && window.firebase.auth) {
+        await window.firebase.auth().signOut();
+      }
+      // notify server to clear session (optional endpoint)
+      await fetch('/logout', {method:'GET'});
+    } catch(e){ /* ignore */ }
+    window.location.href = '/';
+  });
+
+  // Delete account (confirmation)
+  deleteAccountBtn.addEventListener('click', async () => {
+    if (!confirm('¿Estás seguro de eliminar tu cuenta? Esta acción es irreversible.')) return;
+    try {
+      const res = await fetch('/api/delete_account', { method:'POST' });
+      if (!res.ok) throw new Error('delete failed');
+      Notifications.success('Cuenta eliminada', { ttl: 1800 });
+      window.location.href = '/';
+    } catch (err) {
+      console.error(err);
+      Notifications.error('No se pudo eliminar la cuenta');
+    }
+  });
+
+  // Download CSV from fetched history
+  downloadCsvBtn.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/history?limit=1000');
+      if (!res.ok) throw new Error('no history');
+      const arr = await res.json();
+      if (!arr || arr.length === 0) { Notifications.info('No hay datos para exportar'); return; }
+      // convert to CSV
+      const header = ['timestamp','username','prediction','prediction_index','confidence','image_url'];
+      const rows = arr.map(it => [
+        it.timestamp || '',
+        it.username || '',
+        it.prediction || '',
+        it.prediction_index != undefined ? String(it.prediction_index) : '',
+        it.confidence != undefined ? String(it.confidence) : '',
+        it.image_url || ''
+      ]);
+      const csv = [header.join(','), ...rows.map(r => r.map(cell => `"${String(cell).replace(/"/g,'""')}"`).join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'vision_artificial_history.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      Notifications.error('Error exportando CSV');
+    }
+  });
+
+  // Filters & refresh
+  refreshBtn.addEventListener('click', () => {
+    fetchProfileHistory();
+    loadActivities();
+  });
+
+  // initial load
+  (async () => {
+    await loadUserInfo();
+    await fetchProfileHistory();
+    await loadActivities();
+  })();
+});
+</script>
+{% endblock %}

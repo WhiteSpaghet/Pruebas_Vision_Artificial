@@ -1,0 +1,252 @@
+{
+  "study_name": "cnn_hyperparam_search_v1",
+  "created_at": "2025-10-13T00:00:00Z",
+  "objective": "maximize val_accuracy",
+  "trials": [
+    {
+      "trial_id": 1,
+      "status": "COMPLETE",
+      "value": 0.6124,
+      "start_time": "2025-10-12T18:03:11Z",
+      "end_time": "2025-10-12T18:18:03Z",
+      "duration_seconds": 941.92,
+      "params": {
+        "learning_rate": 0.001,
+        "optimizer": "adam",
+        "batch_size": 64,
+        "conv_block_1_filters": 32,
+        "conv_block_2_filters": 64,
+        "dropout_rate": 0.25,
+        "weight_decay": 0.0001,
+        "augmentation": true
+      },
+      "notes": "Baseline-like config"
+    },
+    {
+      "trial_id": 2,
+      "status": "COMPLETE",
+      "value": 0.6438,
+      "start_time": "2025-10-12T18:19:05Z",
+      "end_time": "2025-10-12T18:35:47Z",
+      "duration_seconds": 997.13,
+      "params": {
+        "learning_rate": 0.0005,
+        "optimizer": "adam",
+        "batch_size": 128,
+        "conv_block_1_filters": 64,
+        "conv_block_2_filters": 128,
+        "dropout_rate": 0.3,
+        "weight_decay": 0.0,
+        "augmentation": true
+      },
+      "notes": "Larger model, larger batch"
+    },
+    {
+      "trial_id": 3,
+      "status": "COMPLETE",
+      "value": 0.6271,
+      "start_time": "2025-10-12T18:37:02Z",
+      "end_time": "2025-10-12T18:51:10Z",
+      "duration_seconds": 844.8,
+      "params": {
+        "learning_rate": 0.0002,
+        "optimizer": "adamw",
+        "batch_size": 64,
+        "conv_block_1_filters": 32,
+        "conv_block_2_filters": 64,
+        "dropout_rate": 0.4,
+        "weight_decay": 0.0005,
+        "augmentation": true
+      },
+      "notes": "adamw with small lr and stronger dropout"
+    },
+    {
+      "trial_id": 4,
+      "status": "COMPLETE",
+      "value": 0.6580,
+      "start_time": "2025-10-12T18:52:20Z",
+      "end_time": "2025-10-12T19:08:45Z",
+      "duration_seconds": 978.7,
+      "params": {
+        "learning_rate": 0.0008,
+        "optimizer": "rmsprop",
+        "batch_size": 96,
+        "conv_block_1_filters": 48,
+        "conv_block_2_filters": 96,
+        "dropout_rate": 0.2,
+        "weight_decay": 0.0,
+        "augmentation": true
+      },
+      "notes": "rmsprop performed well here"
+    },
+    {
+      "trial_id": 5,
+      "status": "COMPLETE",
+      "value": 0.6712,
+      "start_time": "2025-10-12T19:09:50Z",
+      "end_time": "2025-10-12T19:28:17Z",
+      "duration_seconds": 1117.9,
+      "params": {
+        "learning_rate": 0.0007,
+        "optimizer": "adam",
+        "batch_size": 64,
+        "conv_block_1_filters": 64,
+        "conv_block_2_filters": 128,
+        "dropout_rate": 0.15,
+        "weight_decay": 0.00005,
+        "augmentation": true
+      },
+      "notes": "Good balance; deeper conv filters"
+    },
+    {
+      "trial_id": 6,
+      "status": "PRUNED",
+      "value": null,
+      "start_time": "2025-10-12T19:29:22Z",
+      "end_time": "2025-10-12T19:33:12Z",
+      "duration_seconds": 229.8,
+      "params": {
+        "learning_rate": 0.01,
+        "optimizer": "sgd",
+        "batch_size": 256,
+        "conv_block_1_filters": 32,
+        "conv_block_2_filters": 32,
+        "dropout_rate": 0.1,
+        "weight_decay": 0.0,
+        "augmentation": false
+      },
+      "notes": "High LR + sgd; pruned early due to bad val loss"
+    },
+    {
+      "trial_id": 7,
+      "status": "COMPLETE",
+      "value": 0.6846,
+      "start_time": "2025-10-12T19:34:40Z",
+      "end_time": "2025-10-12T19:52:03Z",
+      "duration_seconds": 1042.9,
+      "params": {
+        "learning_rate": 0.00035,
+        "optimizer": "adamw",
+        "batch_size": 128,
+        "conv_block_1_filters": 64,
+        "conv_block_2_filters": 128,
+        "dropout_rate": 0.18,
+        "weight_decay": 0.0001,
+        "augmentation": true
+      },
+      "notes": "adamw + moderate weight_decay"
+    },
+    {
+      "trial_id": 8,
+      "status": "COMPLETE",
+      "value": 0.6899,
+      "start_time": "2025-10-12T19:53:11Z",
+      "end_time": "2025-10-12T20:12:37Z",
+      "duration_seconds": 1166.4,
+      "params": {
+        "learning_rate": 0.00025,
+        "optimizer": "adam",
+        "batch_size": 128,
+        "conv_block_1_filters": 96,
+        "conv_block_2_filters": 192,
+        "dropout_rate": 0.15,
+        "weight_decay": 0.00002,
+        "augmentation": true
+      },
+      "notes": "Bigger model; good val acc but heavier"
+    },
+    {
+      "trial_id": 9,
+      "status": "COMPLETE",
+      "value": 0.6987,
+      "start_time": "2025-10-12T20:13:50Z",
+      "end_time": "2025-10-12T20:34:23Z",
+      "duration_seconds": 1243.6,
+      "params": {
+        "learning_rate": 0.00018,
+        "optimizer": "adam",
+        "batch_size": 64,
+        "conv_block_1_filters": 64,
+        "conv_block_2_filters": 128,
+        "dropout_rate": 0.12,
+        "weight_decay": 0.00001,
+        "augmentation": true
+      },
+      "notes": "Very good trade-off: depth + small lr"
+    },
+    {
+      "trial_id": 10,
+      "status": "COMPLETE",
+      "value": 0.7041,
+      "start_time": "2025-10-12T20:35:40Z",
+      "end_time": "2025-10-12T20:58:11Z",
+      "duration_seconds": 1331.2,
+      "params": {
+        "learning_rate": 0.00012,
+        "optimizer": "adam",
+        "batch_size": 64,
+        "conv_block_1_filters": 96,
+        "conv_block_2_filters": 192,
+        "dropout_rate": 0.10,
+        "weight_decay": 0.00001,
+        "augmentation": true
+      },
+      "notes": "Best so far: larger filters with low LR"
+    },
+    {
+      "trial_id": 11,
+      "status": "COMPLETE",
+      "value": 0.7018,
+      "start_time": "2025-10-12T20:59:20Z",
+      "end_time": "2025-10-12T21:20:05Z",
+      "duration_seconds": 1237.5,
+      "params": {
+        "learning_rate": 0.00015,
+        "optimizer": "adamw",
+        "batch_size": 64,
+        "conv_block_1_filters": 96,
+        "conv_block_2_filters": 192,
+        "dropout_rate": 0.10,
+        "weight_decay": 0.00005,
+        "augmentation": true
+      },
+      "notes": "adamw variant near top"
+    },
+    {
+      "trial_id": 12,
+      "status": "COMPLETE",
+      "value": 0.7053,
+      "start_time": "2025-10-12T21:21:30Z",
+      "end_time": "2025-10-12T21:44:12Z",
+      "duration_seconds": 1351.1,
+      "params": {
+        "learning_rate": 0.00010,
+        "optimizer": "adam",
+        "batch_size": 64,
+        "conv_block_1_filters": 128,
+        "conv_block_2_filters": 256,
+        "dropout_rate": 0.08,
+        "weight_decay": 0.00001,
+        "augmentation": true
+      },
+      "notes": "Top trial: deep+wide with tiny LR; heavy model"
+    }
+  ],
+  "best_trial": {
+    "trial_id": 12,
+    "value": 0.7053,
+    "params": {
+      "learning_rate": 0.00010,
+      "optimizer": "adam",
+      "batch_size": 64,
+      "conv_block_1_filters": 128,
+      "conv_block_2_filters": 256,
+      "dropout_rate": 0.08,
+      "weight_decay": 0.00001,
+      "augmentation": true
+    },
+    "notes": "Seleccionado por val_accuracy; revisar coste/param count antes de usar en producción"
+  },
+  "notes": "Archivo de ejemplo. Reemplazar con resultados reales exportados desde Optuna/KerasTuner.",
+  "source": "example"
+}

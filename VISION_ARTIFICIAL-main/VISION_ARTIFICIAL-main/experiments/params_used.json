@@ -1,0 +1,109 @@
+{
+  "experiment_name": "cnn_baseline_best_v12",
+  "created_at": "2025-10-13T00:00:00Z",
+  "git": {
+    "commit": null,
+    "branch": null
+  },
+  "dataset": {
+    "name": "CIFAR-10",
+    "split": {
+      "train": 50000,
+      "test": 10000,
+      "validation": 5000
+    },
+    "preprocessing": [
+      "resize 32x32 (bilinear)",
+      "normalize to [0,1]",
+      "one-hot encode labels"
+    ]
+  },
+  "model_architecture": {
+    "type": "custom_cnn",
+    "description": "2 conv blocks -> Flatten -> Dense(64) -> Dense(10, softmax)",
+    "conv_blocks": [
+      {
+        "block": 1,
+        "filters": 128,
+        "kernel_size": [3, 3],
+        "activation": "relu",
+        "batch_norm": true,
+        "pool": [2, 2]
+      },
+      {
+        "block": 2,
+        "filters": 256,
+        "kernel_size": [3, 3],
+        "activation": "relu",
+        "batch_norm": true,
+        "pool": [2, 2]
+      }
+    ],
+    "dense": [
+      { "units": 64, "activation": "relu", "dropout": 0.08 }
+    ],
+    "output": { "units": 10, "activation": "softmax" }
+  },
+  "training": {
+    "optimizer": "adam",
+    "optimizer_params": {
+      "learning_rate": 0.00010,
+      "beta_1": 0.9,
+      "beta_2": 0.999,
+      "epsilon": 1e-07
+    },
+    "loss": "categorical_crossentropy",
+    "metrics": ["accuracy"],
+    "batch_size": 64,
+    "epochs_requested": 50,
+    "early_stopping": { "enabled": true, "patience": 7, "monitor": "val_loss" },
+    "lr_scheduler": { "type": "ReduceLROnPlateau", "factor": 0.5, "patience": 3, "min_lr": 1e-7 }
+  },
+  "regularization": {
+    "weight_decay": 1e-5,
+    "dropout_rate": 0.08,
+    "augmentation": {
+      "enabled": true,
+      "params": {
+        "horizontal_flip": true,
+        "rotation_range": 15,
+        "width_shift_range": 0.1,
+        "height_shift_range": 0.1,
+        "zoom_range": 0.1
+      }
+    }
+  },
+  "ensemble": {
+    "used": true,
+    "members": [
+      "models/ensemble/cnn_v1.keras",
+      "models/ensemble/cnn_v2.keras",
+      "models/ensemble/cnn_v3.keras"
+    ],
+    "aggregation": "average_probabilities"
+  },
+  "reproducibility": {
+    "random_seed": 42,
+    "numpy_seed": 42,
+    "tf_seed": 42,
+    "use_tf_determinism": true,
+    "tf_config": {
+      "tf_version": null,
+      "notes": "Set tf.config.experimental.enable_op_determinism(True) if TF version supports it"
+    }
+  },
+  "artifacts": {
+    "final_model_keras": "models/cnn_best.keras",
+    "final_model_tflite": "models/cnn_pruned.tflite",
+    "history_json": "experiments/history_cnn.json",
+    "hyperparam_trials": "experiments/hyperparam_trials.json"
+  },
+  "notes": "Parámetros seleccionados a partir de búsqueda bayesiana / Optuna. Trial 12 (deep+wide con LR 1e-4) tenía mejor val_accuracy; valorado el trade-off entre precisión y coste en memoria/latencia.",
+  "how_to_reproduce": [
+    "1) Clonar repo y colocar models/ y experiments/ actualizados.",
+    "2) Crear entorno virtual e instalar requirements.txt",
+    "3) Fijar seeds: np.random.seed(42); tf.random.set_seed(42); enable deterministic ops si es necesario.",
+    "4) Ejecutar train.py con estos parámetros o usar script run_all_training.sh",
+    "5) Guardar model y history; verificar experiments/history_cnn.json"
+  ]
+}

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Inicio - VISION_ARTIFICIAL{% endblock %}
+
+{% block content %}
+<div class="card" style="display:flex; gap:18px; flex-wrap:wrap; align-items:flex-start;">
+  <!-- Left: Presentación / CTA -->
+  <section style="flex:1 1 480px; min-width:320px;">
+    <h1>Bienvenido a <span style="color:var(--accent, #2d6a4f)">VISION_ARTIFICIAL</span></h1>
+    <p class="small-muted">
+      Explora modelos de visión entrenados sobre CIFAR-10, prueba la inferencia con tus propias imágenes,
+      consulta el histórico de predicciones y visualiza mapas de atención (Grad-CAM).
+    </p>
+
+    <div class="card" style="padding:14px; margin-top:12px;">
+      <h3>Probar una imagen</h3>
+      <p class="small-muted">Sube una imagen y obtén la predicción (CNN). Puedes iniciar sesión para guardar el historial.</p>
+
+      <form id="single-predict-form" action="{{ url_for('api_predict') }}" method="post" enctype="multipart/form-data">
+        <label for="single-file">Selecciona imagen</label><br>
+        <input id="single-file" type="file" name="files" accept="image/*" required style="margin-top:8px;">
+        <div style="margin-top:10px; display:flex; gap:8px;">
+          <button type="submit" class="btn">Clasificar</button>
+          <button type="button" id="btn-clear" class="btn" style="background:#888">Limpiar</button>
+        </div>
+      </form>
+
+      <div id="single-result" style="margin-top:12px;"></div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <a href="{{ url_for('dashboard') }}" class="btn">Ir al Dashboard</a>
+      <a href="{{ url_for('register') }}" style="margin-left:8px;" class="btn">Registrarse</a>
+    </div>
+  </section>
+
+  <!-- Right: Información / Últimas predicciones -->
+  <aside style="flex:1 1 360px; min-width:300px;">
+    <div class="card" style="padding:12px;">
+      <h3>Últimas predicciones</h3>
+      <div id="index-latest" class="small-muted">
+        Cargando…
+      </div>
+      <div style="margin-top:10px;">
+        <a href="{{ url_for('dashboard') }}">Ver historial completo →</a>
+      </div>
+    </div>
+
+    <div class="card" style="padding:12px; margin-top:12px;">
+      <h3>Acerca del proyecto</h3>
+      <p class="small-muted">
+        VISION_ARTIFICIAL es un entorno educativo para experimentar con CNNs, comparar con MLPs,
+        probar robustez y visualizar interpretabilidad (Grad-CAM).
+      </p>
+    </div>
+  </aside>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('single-predict-form');
+  const fileInput = document.getElementById('single-file');
+  const resultDiv = document.getElementById('single-result');
+  const latestDiv = document.getElementById('index-latest');
+  const clearBtn = document.getElementById('btn-clear');
+
+  // Manejo del formulario de predicción
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (!fileInput.files || fileInput.files.length === 0) return;
+
+    const fd = new FormData();
+    fd.append('files', fileInput.files[0]);
+
+    resultDiv.innerHTML = '<div class="small-muted">Procesando...</div>';
+    try {
+      const res = await fetch('{{ url_for("api_predict") }}', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const text = await res.text();
+        resultDiv.innerHTML = '<div class="flash flash-error">Error: ' + text + '</div>';
+        return;
+      }
+
+      const arr = await res.json();
+      if (Array.isArray(arr) && arr.length > 0) {
+        const r = arr[0];
+        let html = '<div style="display:flex; gap:12px; align-items:center;">';
+        if (r.image_url) html += '<img src="' + r.image_url + '" style="width:120px; height:120px; object-fit:cover; border-radius:8px;">';
+        html += '<div>';
+        html += '<div><strong>' + (r.prediction || '—') + '</strong></div>';
+        if (r.confidence !== undefined) html += '<div class="small-muted">Confianza: ' + (r.confidence*100).toFixed(2) + '%</div>';
+        if (r.gradcam_b64) html += '<div style="margin-top:8px;"><img src="data:image/png;base64,' + r.gradcam_b64 + '" style="max-width:240px; border-radius:6px;"></div>';
+        html += '</div></div>';
+        resultDiv.innerHTML = html;
+      } else {
+        resultDiv.innerHTML = '<div class="small-muted">Respuesta inesperada del servidor.</div>';
+      }
+
+      await refreshIndexLatest();
+    } catch (err) {
+      console.error(err);
+      resultDiv.innerHTML = '<div class="flash flash-error">Error al procesar la imagen.</div>';
+    }
+  });
+
+  // Limpiar formulario
+  clearBtn.addEventListener('click', () => {
+    fileInput.value = '';
+    resultDiv.innerHTML = '';
+  });
+
+  // Cargar últimas predicciones
+  async function refreshIndexLatest() {
+    try {
+      const res = await fetch('{{ url_for("api_history") }}?limit=5');
+      if (!res.ok) { latestDiv.innerText = 'No se pudo cargar.'; return; }
+
+      const arr = await res.json();
+      if (!Array.isArray(arr) || arr.length === 0) {
+        latestDiv.innerText = 'Sin predicciones aún.';
+        return;
+      }
+
+      let html = '<ul style="padding-left:18px;">';
+      arr.slice(-5).reverse().forEach(it => {
+        const when = it.timestamp ? (new Date(it.timestamp).toLocaleString()) : '-';
+        html += '<li style="margin-bottom:8px;">' + when + ' — <strong>' + it.prediction + '</strong> (' + ((it.confidence||0).toFixed(1)) + '%)</li>';
+      });
+      html += '</ul>';
+      latestDiv.innerHTML = html;
+    } catch (err) {
+      latestDiv.innerText = 'Error cargando últimas predicciones.';
+    }
+  }
+
+  refreshIndexLatest();
+});
+</script>
+{% endblock %}

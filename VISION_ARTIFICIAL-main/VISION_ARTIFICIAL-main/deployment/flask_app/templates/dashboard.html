@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - VISION_ARTIFICIAL{% endblock %}
+
+{% block content %}
+<div class="card" style="display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;">
+  <!-- PANEL IZQUIERDO: MÉTRICAS + SUBIDA -->
+  <div style="flex:1 1 360px; min-width:300px;">
+    <h2>Métricas del modelo</h2>
+    <div class="card" style="padding:12px;">
+      <div style="display:flex; gap:18px; align-items:center; justify-content:flex-start;">
+        <div>
+          <div class="small-muted">Precisión</div>
+          <div id="metric-accuracy" style="font-size:1.6rem; font-weight:700;">—</div>
+        </div>
+        <div>
+          <div class="small-muted">Loss</div>
+          <div id="metric-loss" style="font-size:1.6rem; font-weight:700;">—</div>
+        </div>
+      </div>
+      <p class="small-muted" style="margin-top:12px;">
+        Última actualización automática. También puedes ver el historial de entrenamiento en los notebooks.
+      </p>
+    </div>
+
+    <h2 style="margin-top:18px;">Subir imágenes (batch)</h2>
+    <div class="card" style="padding:12px;">
+      <form id="upload-form" action="{{ url_for('api_predict') }}" method="post" enctype="multipart/form-data">
+        <label for="files">Selecciona imágenes (JPG/PNG) — puedes seleccionar varias</label>
+        <input type="file" id="files" name="files" accept="image/*" multiple style="margin-top:8px;">
+        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+          <button type="submit" class="btn">🔍 Clasificar</button>
+          <button type="reset" class="btn" style="background:#888">Limpiar</button>
+        </div>
+      </form>
+      <div id="upload-results" style="margin-top:12px;"></div>
+    </div>
+
+    <h2 style="margin-top:18px;">Control Ensemble</h2>
+    <div class="card" style="padding:12px;">
+      <label style="display:flex; align-items:center; gap:10px;">
+        <input id="ensemble-toggle" type="checkbox">
+        <span>Activar ensemble (promediado de modelos)</span>
+      </label>
+      <p class="small-muted" style="margin-top:8px;">
+        Activar ensemble combinará las predicciones de los modelos guardados en <code>models/ensemble/</code>.
+      </p>
+    </div>
+  </div>
+
+  <!-- PANEL DERECHO: HISTORIAL + FILTROS -->
+  <div style="flex:1 1 560px; min-width:360px;">
+    <h2>Historial de predicciones</h2>
+
+    <div class="card" style="padding:12px; margin-bottom:14px;">
+      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <div>
+          <label for="history-filter-class" class="small-muted">Clase</label><br>
+          <select id="history-filter-class" style="min-width:180px;">
+            <option value="all">Todas</option>
+            <option value="0">Avión</option>
+            <option value="1">Coche</option>
+            <option value="2">Pájaro</option>
+            <option value="3">Gato</option>
+            <option value="4">Ciervo</option>
+            <option value="5">Perro</option>
+            <option value="6">Rana</option>
+            <option value="7">Caballo</option>
+            <option value="8">Barco</option>
+            <option value="9">Camión</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="history-filter-confidence" class="small-muted">Confianza mínima (%)</label><br>
+          <input id="history-filter-confidence" type="range" min="0" max="100" step="1" value="0">
+          <span id="history-filter-confidence-value" class="small-muted" style="margin-left:8px;">0%</span>
+        </div>
+
+        <div style="margin-left:auto;">
+          <button id="refresh-history-btn" class="btn" type="button">Actualizar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:12px;">
+      <table aria-describedby="Historial de predicciones" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="width:16%;">Fecha</th>
+            <th style="width:18%;">Usuario</th>
+            <th style="width:18%;">Predicción</th>
+            <th style="width:12%;">Confianza</th>
+            <th style="width:18%;">Imagen</th>
+            <th style="width:18%;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="history-table">
+          <tr><td colspan="6" class="small-muted">Cargando historial…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- PANEL INFERIOR: COMPARATIVA MLP vs CNN + EXPLICABILIDAD -->
+<div style="margin-top:18px;">
+  <div class="card">
+    <h2>Explicabilidad / Comparativa</h2>
+    <div style="display:flex; gap:18px; flex-wrap:wrap;">
+      <div style="flex:1 1 320px;">
+        <h4>Grad-CAM / Saliency</h4>
+        <p class="small-muted">Al hacer una predicción verás la imagen original y su Grad-CAM (si está disponible).</p>
+        <div id="gradcam-preview" style="display:flex; gap:12px; flex-wrap:wrap;">
+          <!-- aquí pueden insertarse <img src="data:image/png;base64,..." /> -->
+        </div>
+      </div>
+
+      <div style="flex:1 1 320px;">
+        <h4>MLP vs CNN (resumen)</h4>
+        <p class="small-muted">Comparativa rápida entre los modelos entrenados. Usa los notebooks para análisis profundo.</p>
+        <div id="mlp-vs-cnn" style="display:flex; gap:8px; align-items:center;">
+          <div><strong>MLP</strong></div>
+          <div style="width:6px;"></div>
+          <div><strong>CNN</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal simple para mostrar Grad-CAM ampliado -->
+<div id="gradcam-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
+  <div style="max-width:900px; width:94%; background:var(--card-bg, white); padding:12px; border-radius:8px; position:relative;">
+    <button id="gradcam-close" style="position:absolute; right:12px; top:12px; border:none; background:transparent; font-size:1.2rem; cursor:pointer;">✕</button>
+    <h3>Grad-CAM</h3>
+    <div id="gradcam-image" style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+      <!-- imágenes se inyectan aquí -->
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  // Slider confianza
+  const conf = document.getElementById('history-filter-confidence');
+  const confVal = document.getElementById('history-filter-confidence-value');
+  if(conf && confVal){
+    conf.addEventListener('input', ()=>{ confVal.innerText = conf.value + '%'; });
+    confVal.innerText = conf.value + '%';
+  }
+
+  // Modal Grad-CAM
+  const modal = document.getElementById('gradcam-modal');
+  const closeBtn = document.getElementById('gradcam-close');
+  if(closeBtn) closeBtn.addEventListener('click', ()=>{ modal.style.display = 'none'; });
+
+  // Abrir imagen grande al clickar miniatura
+  document.getElementById('history-table')?.addEventListener('click', function(ev){
+    const t = ev.target.closest('img');
+    if(!t) return;
+    const src = t.src;
+    const container = document.getElementById('gradcam-image');
+    container.innerHTML = '';
+    const big = document.createElement('img');
+    big.src = src;
+    big.style.maxWidth = '100%';
+    big.style.borderRadius = '6px';
+    container.appendChild(big);
+    modal.style.display = 'flex';
+  });
+
+  // Botón actualizar historial
+  document.getElementById('refresh-history-btn')?.addEventListener('click', async function(){
+    if(typeof refreshHistory === 'function'){
+      await refreshHistory();
+      if(typeof showToast === 'function'){
+        showToast('Historial actualizado','success',1200);
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

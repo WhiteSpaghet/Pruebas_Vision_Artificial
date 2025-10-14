@@ -1,0 +1,96 @@
+/* ===========================
+   theme_dark_gray.css
+   Tema oscuro gris para VISION_ARTIFICIAL
+   =========================== */
+
+/* Fondo general */
+body {
+    background-color: #1e1e1e; /* gris oscuro */
+    color: #f0f0f0; /* texto claro */
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+/* Contenedores generales */
+.container {
+    width: 90%;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Tarjetas / paneles */
+.card {
+    background-color: #2b2b2b;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    margin-bottom: 15px;
+}
+
+/* Títulos */
+h1, h2, h3, h4 {
+    color: #ffffff;
+    margin-bottom: 10px;
+}
+
+/* Botones */
+button {
+    background-color: #3a3a3a;
+    color: #f0f0f0;
+    border: 1px solid #555;
+    border-radius: 5px;
+    padding: 8px 15px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+button:hover {
+    background-color: #505050;
+}
+
+/* Inputs */
+input[type="text"],
+input[type="file"],
+select {
+    background-color: #2d2d2d;
+    color: #f0f0f0;
+    border: 1px solid #555;
+    padding: 8px;
+    border-radius: 5px;
+}
+input:focus,
+select:focus {
+    outline: none;
+    border-color: #777;
+}
+
+/* Enlaces */
+a {
+    color: #6ab0ff;
+    text-decoration: none;
+}
+a:hover {
+    text-decoration: underline;
+}
+
+/* Tablas */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: #2b2b2b;
+}
+th, td {
+    padding: 10px;
+    border: 1px solid #444;
+}
+th {
+    background-color: #3a3a3a;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 10px;
+    color: #aaa;
+    font-size: 0.9rem;
+}

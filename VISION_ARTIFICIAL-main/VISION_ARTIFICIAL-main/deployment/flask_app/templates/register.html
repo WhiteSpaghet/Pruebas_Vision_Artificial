@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Registrarse - VISION_ARTIFICIAL{% endblock %}
+
+{% block content %}
+<div style="max-width:560px; margin: 28px auto;">
+  <div class="card" style="padding:20px;">
+    <h2>Crear cuenta</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}" style="margin-bottom:12px;">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form id="register-form" action="{{ url_for('register') }}" method="post" novalidate>
+      <label for="reg-name">Nombre completo</label><br>
+      <input id="reg-name" name="name" type="text" required style="margin-top:8px;" placeholder="Tu nombre"><br><br>
+
+      <label for="reg-email">Correo electrónico</label><br>
+      <input id="reg-email" name="email" type="email" required style="margin-top:8px;" placeholder="tu@correo.com"><br><br>
+
+      <label for="reg-password">Contraseña</label><br>
+      <input id="reg-password" name="password" type="password" required style="margin-top:8px;" placeholder="Mínimo 8 caracteres"><br><br>
+
+      <label for="reg-password-confirm">Repetir contraseña</label><br>
+      <input id="reg-password-confirm" name="password_confirm" type="password" required style="margin-top:8px;"><br><br>
+
+      <!-- Hidden field to send idToken if Firebase client used -->
+      <input type="hidden" id="idTokenField" name="idToken" value="">
+
+      <div style="display:flex; gap:10px; margin-top:12px;">
+        <button type="submit" class="btn">Registrarme</button>
+        <a href="{{ url_for('login') }}" class="btn" style="background:#888; text-decoration:none; padding:10px 14px; display:inline-block;">Ya tengo cuenta</a>
+      </div>
+    </form>
+
+    <hr style="margin:18px 0; opacity:0.6;">
+
+    <div>
+      <p class="small-muted">O registrarse con</p>
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button id="btn-google-reg" class="btn" style="background:#db4437;">Google</button>
+        <button id="btn-facebook-reg" class="btn" style="background:#4267B2;">Facebook</button>
+      </div>
+    </div>
+
+    <p class="small-muted" style="margin-top:14px;">
+      Al registrarte aceptas los términos de uso.
+    </p>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const form = document.getElementById('register-form');
+  const nameInp = document.getElementById('reg-name');
+  const emailInp = document.getElementById('reg-email');
+  const passInp = document.getElementById('reg-password');
+  const passConfirm = document.getElementById('reg-password-confirm');
+  const idTokenField = document.getElementById('idTokenField');
+
+  // wrapper to inform backend with idToken to create server session / save user
+  async function sendIdTokenToBackend(idToken, profile = {}) {
+    try {
+      const payload = { idToken, profile };
+      const resp = await fetch("{{ url_for('register') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (resp.ok) {
+        window.location.href = "{{ url_for('dashboard') }}";
+      } else {
+        const txt = await resp.text();
+        Notifications.error("Error servidor: " + txt);
+      }
+    } catch (err) {
+      console.error(err);
+      Notifications.error("No se pudo notificar al servidor.");
+    }
+  }
+
+  // detect legacy firebase global auth
+  const hasLegacyFirebase = (window.firebase && window.firebase.auth);
+
+  // Social sign-up handlers (if Firebase client configured)
+  const googleBtn = document.getElementById('btn-google-reg');
+  const fbBtn = document.getElementById('btn-facebook-reg');
+
+  if (hasLegacyFirebase) {
+    googleBtn.addEventListener('click', async () => {
+      try {
+        const provider = new window.firebase.auth.GoogleAuthProvider();
+        const result = await window.firebase.auth().signInWithPopup(provider);
+        const user = result.user;
+        const idToken = await user.getIdToken();
+        // send to backend to register/sync
+        await sendIdTokenToBackend(idToken, { name: user.displayName, email: user.email, picture: user.photoURL });
+      } catch (err) {
+        console.error(err);
+        Notifications.error("Registro con Google falló.");
+      }
+    });
+
+    fbBtn.addEventListener('click', async () => {
+      try {
+        const provider = new window.firebase.auth.FacebookAuthProvider();
+        const result = await window.firebase.auth().signInWithPopup(provider);
+        const user = result.user;
+        const idToken = await user.getIdToken();
+        await sendIdTokenToBackend(idToken, { name: user.displayName, email: user.email, picture: user.photoURL });
+      } catch (err) {
+        console.error(err);
+        Notifications.error("Registro con Facebook falló.");
+      }
+    });
+  } else {
+    // If no firebase, show info toast
+    googleBtn.addEventListener('click', () => Notifications.warning("Login social no configurado."));
+    fbBtn.addEventListener('click', () => Notifications.warning("Login social no configurado."));
+  }
+
+  // Form submit: if Firebase available, create user via Firebase client and send idToken to backend.
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const name = nameInp.value.trim();
+    const email = emailInp.value.trim();
+    const pass = passInp.value;
+    const pass2 = passConfirm.value;
+
+    if (!name || !email || !pass) {
+      Notifications.error("Completa todos los campos.");
+      return;
+    }
+    if (pass.length < 8) {
+      Notifications.error("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (pass !== pass2) {
+      Notifications.error("Las contraseñas no coinciden.");
+      return;
+    }
+
+    if (hasLegacyFirebase) {
+      try {
+        // create user in Firebase Auth
+        const userCredential = await window.firebase.auth().createUserWithEmailAndPassword(email, pass);
+        const user = userCredential.user;
+        // set display name
+        await user.updateProfile({ displayName: name });
+        const idToken = await user.getIdToken();
+        // optionally send profile data to backend
+        await sendIdTokenToBackend(idToken, { name, email });
+      } catch (err) {
+        console.error("Firebase signup error:", err);
+        // show friendly message if possible
+        const msg = (err && err.message) ? err.message : "Error al crear cuenta.";
+        Notifications.error(msg);
+      }
+      return;
+    }
+
+    // Fallback: traditional server-side registration (form POST)
+    // Submit the original form to backend register route
+    form.submit();
+  });
+
+  // If firebase client exists and user already signed in, sync with backend
+  if (hasLegacyFirebase) {
+    window.firebase.auth().onAuthStateChanged(async (user) => {
+      if (user) {
+        try {
+          const token = await user.getIdToken();
+          // optionally auto-send to backend to create session
+          await sendIdTokenToBackend(token, { name: user.displayName, email: user.email });
+        } catch (e) { /* ignore */ }
+      }
+    });
+  }
+});
+</script>
+{% endblock %}

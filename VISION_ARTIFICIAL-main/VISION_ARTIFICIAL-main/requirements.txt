@@ -1,0 +1,23 @@
+tensorflow
+opencv-python-headless
+scikit-image
+Pillow
+matplotlib
+seaborn
+numpy
+pandas
+scikit-learn
+Flask
+Flask-Login
+Flask-WTF
+firebase-admin
+pyrebase4
+jupyter
+notebook
+ipython
+optuna
+tqdm
+tensorflow-model-optimization
+
+#pip install -r requirements.txt -- asi se instala todo
+#pip install --upgrade -r requirements.txt -- asi se actualiza todo
