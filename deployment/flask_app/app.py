@@ -17,6 +17,17 @@ import pathlib
 from datetime import datetime
 from functools import wraps
 from typing import Optional, Dict, Any
+import firebase_admin
+from firebase_admin import credentials, storage
+
+# Inicializar Firebase Admin
+cred = credentials.Certificate("firebase_service_account.json")  # tu clave descargada
+firebase_admin.initialize_app(cred, {
+    "storageBucket": "TU_BUCKET.appspot.com"
+})
+
+bucket = storage.bucket()  # referencia al bucket
+
 
 from flask import (
     Flask, render_template, request, jsonify, session, redirect, url_for, flash
